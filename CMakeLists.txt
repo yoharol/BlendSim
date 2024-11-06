@@ -10,9 +10,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
 
-find_package(TBB REQUIRED)
-message("TBB found at: ${TBB_DIR}")
-
 find_package(OpenMP REQUIRED)
 
 if(OpenMP_CXX_FOUND)
@@ -23,26 +20,31 @@ else()
     message(FATAL_ERROR "OpenMP not found.")
 endif()
 
+set(USD_EXPORTATION OFF)
+
+if(USD_EXPORTATION)
+    add_definitions(-DUSD_EXPORTATION)
+    message("Linking to OpenUSD")
+    get_property(importTargets DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY IMPORTED_TARGETS)
+    find_package(pxr REQUIRED COMPONENTS
+        usd
+        usdGeom
+        usdSkel
+        tf
+        vt
+        gf
+        sdf
+        arch
+        work)
+    # print out where is the OpenUSD
+    message("OpenUSD found at: ${pxr_DIR}")
+    get_property(importTargetsAfter DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY IMPORTED_TARGETS)
+    list(REMOVE_ITEM importTargetsAfter ${importTargets})
+    message("Targets from OpenUSD: ${importTargetsAfter}")
+endif()
+
 get_filename_component(ABS_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} ABSOLUTE)
 add_definitions(-DSIMTF_RESOURCES_PATH="${ABS_SOURCE_DIR}/assets")
-
-message("Linking to OpenUSD")
-get_property(importTargets DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY IMPORTED_TARGETS)
-find_package(pxr REQUIRED COMPONENTS
-    usd
-    usdGeom
-    usdSkel
-    tf
-    vt
-    gf
-    sdf
-    arch
-    work)
-# print out where is the OpenUSD
-message("OpenUSD found at: ${pxr_DIR}")
-get_property(importTargetsAfter DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY IMPORTED_TARGETS)
-list(REMOVE_ITEM importTargetsAfter ${importTargets})
-message("Targets from OpenUSD: ${importTargetsAfter}")
 
 add_subdirectory(external)
 
@@ -59,15 +61,21 @@ include_directories(${Python3_INCLUDE_DIRS})
 set(LIBS 
     SIMTF_CORE 
     ArmorerPhys 
-    usd
-    usdGeom
-    usdSkel
-    tf
-    vt
-    gf
-    sdf
-    arch
-    work)
+)
+
+if(USD_EXPORTATION)
+    list(APPEND LIBS
+        usd
+        usdGeom
+        usdSkel
+        tf
+        vt
+        gf
+        sdf
+        arch
+        work
+    )
+endif()
 
 file(GLOB_RECURSE TEST_SOURCES "tests/*.cpp")
 file(GLOB EXAMPLE_SOURCES "examples/*.cpp")

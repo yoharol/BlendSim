@@ -7,6 +7,7 @@
 #include <ArmorerPhys/tet.h>
 #include <igl/writeDMAT.h>
 
+#ifdef USD_EXPORTATION
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/pointBased.h>
 #include <pxr/usd/usdGeom/primvarsAPI.h>
@@ -19,6 +20,7 @@
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usdSkel/utils.h>
 #include <pxr/usd/usdGeom/primvarsAPI.h>
+#endif  // USD_EXPORTATION
 
 #include "simTF/type.h"
 #include "simTF/spline.h"
@@ -27,6 +29,7 @@ namespace aphys {
 
 TrajectoryExporter::TrajectoryExporter(const SplineTrajectory& traj,
                                        const Matx4i& tets, int sampling_N) {
+#ifdef USD_EXPORTATION
   int n_keyframes = traj.n_keyframes;
   int n_verts = traj.n_verts;
 
@@ -102,12 +105,14 @@ TrajectoryExporter::TrajectoryExporter(const SplineTrajectory& traj,
     std::cout << tau[i] << " ";
   }
   std::cout << std::endl;
+#endif  // USD_EXPORTATION
 }
 
 TrajectoryExporter::TrajectoryExporter(const SplineTrajectory& traj,
                                        const Matx3i& faces,
                                        const MatxXd& weight_mat, int sampling_N)
     : faces(faces) {
+#ifdef USD_EXPORTATION
   int n_keyframes = traj.n_keyframes;
   int n_verts = weight_mat.rows();
 
@@ -164,9 +169,11 @@ TrajectoryExporter::TrajectoryExporter(const SplineTrajectory& traj,
     }
   }
   std::cout << std::endl;
+#endif  // USD_EXPORTATION
 }
 
 void TrajectoryExporter::SaveAnimationToUSD(const std::string& filename) {
+#ifdef USD_EXPORTATION
   using namespace pxr;
 
   double total_time = tau.back();
@@ -300,10 +307,12 @@ void TrajectoryExporter::SaveAnimationToUSD(const std::string& filename) {
   stage->GetRootLayer()->Save();
 
   std::cout << "Successfully saved USD file: " << filename << std::endl;
+#endif  // USD_EXPORTATION
 }
 
 void SaveFrameAnimatinoToUsd(SplineTrajectory& traj, const Matx4i& tets,
                              const std::string& filename, int fps) {
+#ifdef USD_EXPORTATION
   using namespace pxr;
 
   double max_tau = traj.tau_stamp.back();
@@ -358,11 +367,13 @@ void SaveFrameAnimatinoToUsd(SplineTrajectory& traj, const Matx4i& tets,
 
   stage->GetRootLayer()->Save();
   std::cout << "Successfully saved USD file: " << filename << std::endl;
+#endif  // USD_EXPORTATION
 }
 
 void SaveFrameAnimatinoToUsd(SplineTrajectory& traj, const Matx3i& faces,
                              const MatxXd& weight_mat,
                              const std::string& filename, int fps) {
+#ifdef USD_EXPORTATION
   using namespace pxr;
 
   double max_tau = traj.tau_stamp.back();
@@ -411,6 +422,7 @@ void SaveFrameAnimatinoToUsd(SplineTrajectory& traj, const Matx3i& faces,
 
   stage->GetRootLayer()->Save();
   std::cout << "Successfully saved USD file: " << filename << std::endl;
+#endif  // USD_EXPORTATION
 }
 
 }  // namespace aphys
