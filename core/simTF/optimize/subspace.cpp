@@ -47,6 +47,41 @@ double compute_lbs_wsp(const SampleBatch& batch, const int n_verts,
   return Wsp;
 }
 
+double compute_lbs2d_wsp(const SampleBatch& batch, const int n_verts,
+                         const SplineTrajectory& lbs_trajectory,
+                         ProjectiveDynamicsSolver2D& pd_solver,
+                         const LBSDataManager2D& ldm,
+                         const double damping_alpha) {
+  double Wsp = 0.0;
+  int n_controls = lbs_trajectory.n_verts;
+  MatxXd c_p(n_controls, 3);
+  MatxXd c_v(n_controls, 3);
+  MatxXd c_a(n_controls, 3);
+  Vecxd material_jacobian(n_verts * 3);
+
+  for (int s = 0; s < batch.n_samples; s++) {
+    const SampleInfo& info = batch.samples[s];
+    double T = lbs_trajectory.T_between[info.keyframe_idx];
+    sample_damped_dynamic_status(info, lbs_trajectory, c_p, c_v, c_a);
+    Vecxd c_v_vec = aphys::Vecxd::Map(c_v.data(), c_v.size());
+    Vecxd c_a_vec = aphys::Vecxd::Map(c_a.data(), c_a.size());
+
+    MatxXd pos = ldm.U * c_p;
+    pd_solver.localStep(pos, ldm.faces);
+    MatxXd gradient = ldm.LU * c_p - pd_solver.J * pd_solver.P;
+    material_jacobian = Vecxd::Map(gradient.data(), gradient.size());
+
+    double W = 0.0;
+
+    Vecxd f = material_jacobian + ldm.MU_ext * c_a_vec / T / T +
+              damping_alpha * ldm.MU_ext * c_v_vec / T;
+
+    Wsp += 0.5 * f.dot(f) * info.weight * T;
+    // Wsp += 0.5 * c_v.norm();
+  }
+  return Wsp;
+}
+
 void precompute_lbs_hessian_batch(const SampleBatch& batch,
                                   const ArgIdxPV& argPV,
                                   const std::vector<double> T_between,

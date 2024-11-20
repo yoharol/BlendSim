@@ -41,6 +41,35 @@ struct LBSModel {
   void initialize_render_objects(Scene& scene);
 };
 
+struct LBSModel2D {
+  int n_controls;
+  int n_points;
+  int n_edges;
+
+  aphys::MatxXd cp_ref;
+  aphys::MatxXd cp;
+  aphys::Vecxi P;
+  aphys::Matx2i BE;
+  aphys::MatxXd weights;
+  Eigen::MatrixXd cW;
+  aphys::MatxXd T;
+
+  SparseMatd lbs_weights;
+  SparseMatd lbs_weights_ext;
+
+  aphys::MatxXd anim_frame_data;
+
+  Points control_points;
+  Edges bone_edges;
+
+  LBSModel2D(MatxXd& v_p, MatxXd& cp_ref, Vecxi& P, Matx2i& BE,
+             MatxXd& weights);
+
+  void set_transform(const int idx, const Vec2d translate, const double angle);
+
+  // void initialize_render_objects(Scene& scene);
+};
+
 }  // namespace aphys
 
 #endif  // SIMTF_LBS_MODEL_H_

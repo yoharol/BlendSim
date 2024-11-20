@@ -383,4 +383,135 @@ void BezierLBSMatrix<dim>::global_step() {
 template struct BezierLBSMatrix<2>;
 template struct BezierLBSMatrix<3>;
 
+BezierLBS2D::BezierLBS2D(SplineTrajectory& trajectory, ArgIdxPV& arg_pv,
+                         SampleBatch& sample_batch,
+                         ProjectiveDynamicsSolver2D& pd_solver,
+                         ArgSelection<2>& arg_selection, DataManager<2>& data,
+                         LBSModel2D& lbs_model)
+    : trajectory(trajectory),
+      arg_pv(arg_pv),
+      sample_batch(sample_batch),
+      pd_solver(pd_solver),
+      data(data),
+      arg_selection(arg_selection),
+      lbs_model(lbs_model) {
+  n_verts = trajectory.n_verts;
+  n_controls = trajectory.keyframes[0].pos.rows();
+  n_keyframes = trajectory.n_keyframes;
+  n_fullargs = 2 * n_keyframes * n_controls;
+  n_args = arg_pv.n_argP + arg_pv.n_argV;
+
+  sum_lhs_hessian.resize(0, 0);
+  sum_lhs_hessian.resize(n_args, n_args);
+  sum_rhs_hessian.resize(0, 0);
+  sum_rhs_hessian.resize(n_args, n_fullargs);
+  JacobianFres.clear();
+
+  for (int s = 0; s < sample_batch.n_samples; s++) {
+    const SampleInfo& info = sample_batch.samples[s];
+
+    SparseMatd B(n_controls, n_fullargs);
+    SparseMatd Bd(n_controls, n_fullargs);
+    SparseMatd Bdd(n_controls, n_fullargs);
+
+    std::vector<Tripletd> B_trips;
+    std::vector<Tripletd> Bd_trips;
+    std::vector<Tripletd> Bdd_trips;
+
+    B_trips.reserve(n_controls * 4);
+    Bd_trips.reserve(n_controls * 4);
+    Bdd_trips.reserve(n_controls * 4);
+
+    int idx = info.keyframe_idx;
+    double T = trajectory.T_between[idx];
+    double t = info.t;
+    Vec4d coeff = get_bezier_coeff(t);
+    Vec4d d_coeff = get_bezier_d_coeff(t);
+    Vec4d dd_coeff = get_bezier_dd_coeff(t);
+
+    for (int i = 0; i < n_controls; i++) {
+      int p1_idx = idx * 2 * n_controls + i;
+      int p2_idx = (idx + 1) * 2 * n_controls + i;
+      int v1_idx = idx * 2 * n_controls + i + n_controls;
+      int v2_idx = (idx + 1) * 2 * n_controls + i + n_controls;
+
+      B_trips.emplace_back(i, p1_idx, coeff(0));
+      Bd_trips.emplace_back(i, p1_idx, d_coeff(0));
+      Bdd_trips.emplace_back(i, p1_idx, dd_coeff(0));
+
+      B_trips.emplace_back(i, p2_idx, coeff(1));
+      Bd_trips.emplace_back(i, p2_idx, d_coeff(1));
+      Bdd_trips.emplace_back(i, p2_idx, dd_coeff(1));
+
+      B_trips.emplace_back(i, v1_idx, T * coeff(2));
+      Bd_trips.emplace_back(i, v1_idx, T * d_coeff(2));
+      Bdd_trips.emplace_back(i, v1_idx, T * dd_coeff(2));
+
+      B_trips.emplace_back(i, v2_idx, T * coeff(3));
+      Bd_trips.emplace_back(i, v2_idx, T * d_coeff(3));
+      Bdd_trips.emplace_back(i, v2_idx, T * dd_coeff(3));
+    }
+    B.setFromTriplets(B_trips.begin(), B_trips.end());
+    Bd.setFromTriplets(Bd_trips.begin(), Bd_trips.end());
+    Bdd.setFromTriplets(Bdd_trips.begin(), Bdd_trips.end());
+
+    double dtau = info.weight * T;
+    SparseMatd& U = lbs_model.lbs_weights;
+    SparseMatd& M = data.M;
+    SparseMatd MU = M * U;
+    SparseMatd Jq = 1.0 / T / T * MU * Bdd + data.damping_alpha / T * MU * Bd +
+                    pd_solver.L * U * B;
+    SparseMatd JqS = Jq * arg_selection.S;
+
+    JacobianFres.push_back(JqS);
+    Jacobian2.push_back(Jq);
+
+    sum_lhs_hessian +=
+        dtau * JacobianFres.back().transpose() * JacobianFres.back();
+    sum_rhs_hessian +=
+        dtau * JacobianFres.back().transpose() * Jacobian2.back();
+  }
+  solver.analyzePattern(sum_lhs_hessian);
+  solver.factorize(sum_lhs_hessian);
+  rhs.resize(n_args, 2);
+}
+
+void BezierLBS2D::local_step() {
+  rhs.setZero();
+
+  for (int s = 0; s < sample_batch.n_samples; s++) {
+    const SampleInfo& info = sample_batch.samples[s];
+    int idx = info.keyframe_idx;
+    double t = info.t;
+    Vec4d coeff = get_bezier_coeff(t);
+    Vec4d d_coeff = get_bezier_d_coeff(t);
+    Vec4d dd_coeff = get_bezier_dd_coeff(t);
+    const MatxXd& p1 = trajectory.keyframes[idx].pos;
+    const MatxXd& p2 = trajectory.keyframes[idx + 1].pos;
+    const MatxXd& v1 = trajectory.keyframes[idx].vel;
+    const MatxXd& v2 = trajectory.keyframes[idx + 1].vel;
+    double T = trajectory.T_between[idx];
+    double dtau = info.weight * T;
+    MatxXd v_p =
+        coeff(0) * p1 + coeff(1) * p2 + T * coeff(2) * v1 + T * coeff(3) * v2;
+    MatxXd x = lbs_model.lbs_weights * v_p;
+    pd_solver.localStep(x, data.elements);
+    MatxXd JP = pd_solver.J * pd_solver.P;
+    rhs += dtau * JacobianFres[s].transpose() * JP;
+  }
+  rhs = rhs - sum_rhs_hessian * arg_selection.C;
+}
+
+void BezierLBS2D::global_step() {
+  Eigen::MatrixXd new_arg = solver.solve(rhs);
+
+  MatxXd new_full_arg = arg_selection.C + arg_selection.S * new_arg;
+  for (int i = 0; i < n_keyframes; i++) {
+    trajectory.keyframes[i].pos =
+        new_full_arg.block(i * n_controls * 2, 0, n_controls, 2);
+    trajectory.keyframes[i].vel =
+        new_full_arg.block(i * n_controls * 2 + n_controls, 0, n_controls, 2);
+  }
+}
+
 }  // namespace aphys

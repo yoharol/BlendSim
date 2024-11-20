@@ -2,6 +2,7 @@
 #define SIMTF_OPTIMIZE_FULL_OPTIMIZE_H_
 
 #include <ArmorerPhys/type.h>
+#include <ArmorerPhys/sim/pd.h>
 #include <Eigen/SparseCore>
 #include <Eigen/SparseCholesky>
 
@@ -103,6 +104,39 @@ struct BezierLBSMatrix {
                   ProjectiveDynamicsSolver<dim>& pd_solver,
                   ArgSelection<dim>& arg_selection, DataManager<dim>& data,
                   LBSModel& lbs_model);
+
+  void local_step();
+
+  void global_step();
+};
+
+struct BezierLBS2D {
+  int n_verts;
+  int n_controls;
+  int n_keyframes;
+  int n_fullargs;
+  int n_args;
+
+  std::vector<SparseMatd> JacobianFres;
+  std::vector<SparseMatd> Jacobian2;
+  SparseMatd sum_lhs_hessian;
+  SparseMatd sum_rhs_hessian;
+  Eigen::MatrixXd rhs;
+  Eigen::MatrixXd test_rhs;
+  ArgSelection<2>& arg_selection;
+  Eigen::SimplicialLDLT<SparseMatd> solver;
+
+  LBSModel2D& lbs_model;
+  SplineTrajectory& trajectory;
+  ArgIdxPV& arg_pv;
+  SampleBatch& sample_batch;
+  ProjectiveDynamicsSolver2D& pd_solver;
+  DataManager<2>& data;
+
+  BezierLBS2D(SplineTrajectory& trajectory, ArgIdxPV& arg_pv,
+              SampleBatch& sample_batch, ProjectiveDynamicsSolver2D& pd_solver,
+              ArgSelection<2>& arg_selection, DataManager<2>& data,
+              LBSModel2D& lbs_model);
 
   void local_step();
 

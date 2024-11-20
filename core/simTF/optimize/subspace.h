@@ -2,6 +2,7 @@
 #define SIMTF_OPTIMIZE_SUBSPACE_H_
 
 #include <ArmorerPhys/type.h>
+#include <ArmorerPhys/sim/pd.h>
 
 #include "simTF/spline.h"
 #include "simTF/type.h"
@@ -43,10 +44,45 @@ struct LBSDataManager {
   }
 };
 
+struct LBSDataManager2D {
+  const int n_verts;
+  const int n_controls;
+  SparseMatd M;
+  const SparseMatd& U;
+  const SparseMatd& U_ext;
+  const SparseMatd& L;
+  const Matx3i& faces;
+  SparseMatd LU;
+  SparseMatd LU_ext;
+  SparseMatd MU_ext;
+
+  LBSDataManager2D(const int n_controls,
+                   const ProjectiveDynamicsSolver2D& pd_solver,
+                   const LBSModel2D& lbs_model, const MatxXd& v_p,
+                   const Matx3i& faces, const DiagMatxXd& M)
+      : n_verts(v_p.rows()),
+        n_controls(n_controls),
+        M(M),
+        U(lbs_model.lbs_weights),
+        U_ext(lbs_model.lbs_weights_ext),
+        L(pd_solver.L),
+        faces(faces) {
+    LU = L * U;
+    LU_ext = pd_solver.L_ext * U_ext;
+    MU_ext = M * U_ext;
+  }
+};
+
 double compute_lbs_wsp(const SampleBatch& batch, const int n_verts,
                        const SplineTrajectory& lbs_trajectory,
                        ProjectiveDynamicsSolver<3>& pd_solver,
                        const LBSDataManager& ldm, const double damping_alpha);
+
+double compute_lbs2d_wsp(const SampleBatch& batch, const int n_verts,
+                         const SplineTrajectory& lbs_trajectory,
+                         ProjectiveDynamicsSolver2D& pd_solver,
+                         const LBSDataManager2D& ldm,
+                         const double damping_alpha);
 
 void precompute_lbs_hessian_batch(const SampleBatch& batch,
                                   const ArgIdxPV& argPV,
